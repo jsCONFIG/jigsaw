@@ -298,7 +298,7 @@
 
         this._.canvas.ctx.drawImage( this.img, 0, 0 );
 
-        document.body.appendChild( canvas );
+        // document.body.appendChild( canvas );
     };
 
     // rt，font类似css的font属性，这个pos是文字的左下顶点的位置
