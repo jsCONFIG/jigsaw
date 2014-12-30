@@ -123,6 +123,7 @@
     var _canvas = function ( canvas ) {
         this.canvas = canvas;
         this.ctx = canvas.getContext('2d');
+        this.dataStore = undefined;
     };
 
     // 对ctx进行样式设置
@@ -135,6 +136,8 @@
                 self.ctx[ i ] = sObj[ i ];
             }
         }
+
+        return this;
     };
 
     // 画线
@@ -153,7 +156,7 @@
             self.ctx.lineTo( item[0], item[1] );
         }
         self.ctx.stroke();
-        return self.ctx;
+        return this;
     };
 
     _canvas.prototype.fillStyle = function ( style ) {
@@ -189,7 +192,21 @@
         self.doStyle( styleObj );
 
         self.ctx.fillRect( pointArr[0], pointArr[1], w, h );
-        return self.ctx;
+        return this;
+    };
+
+    // 同rect
+    _canvas.prototype.rect = function ( pointArr, w, h, styleObj ) {
+        if( pointArr.length < 2 ) {
+            return;
+        }
+        var self = this;
+
+        self.doStyle( styleObj );
+
+        self.ctx.rect( pointArr[0], pointArr[1], w, h );
+        self.ctx.stroke();
+        return this;
     };
 
     // 绘圆
@@ -200,15 +217,58 @@
 
         self.ctx.beginPath();
         self.ctx.arc( ogPoint[0], ogPoint[1], r, sAg, eAg, true );
-        return self.ctx;
+        return this;
     };
 
-    _canvas.prototype.clear = function ( sPos, ePos ) {
+    // 克隆当前canvas，并返回复印件，可用于解决画布跨域图片导致画布被污染的问题
+    _canvas.prototype.clone = function () {
+        var size = (new _dom(this.canvas)).getSize();
+        var myData = this.ctx.getImageData( 0, 0, size.width, size.height );
+
+        var canvas = _tool.C('canvas');
+
+        // 初始化canvas画布
+        canvas.width = size.width;
+        canvas.height = size.height;
+
+        this.ctx.putImageData( myData, 0, 0 );
+        return canvas;
+    };
+
+    _canvas.prototype.clear = function ( sPos, shape ) {
         var self = this;
+        var cSize = (new _dom(this.canvas)).getSize();
         var s = sPos || [0, 0],
-            e = ePos || [cSize.width, cSize.height];
+            e = shape || [cSize.width, cSize.height];
+
+        // 存储数据，用于restore
+        self.dataStore = self.ctx.getImageData( s[0], s[1], e[0], e[1] );
         self.ctx.clearRect( s[0], s[1], e[0], e[1] );
-        return self.ctx;
+        return this;
+    };
+
+    _canvas.prototype.saveData = function ( sPos, shape ) {
+         var self = this;
+        var cSize = (new _dom(this.canvas)).getSize();
+        var s = sPos || [0, 0],
+            e = shape || [cSize.width, cSize.height];
+
+        var data = this.ctx.getImageData( 0, 0, e[0], e[1] );
+        self.dataStore = data;
+        return this;
+    };
+
+    _canvas.prototype.restore = function ( sPos ) {
+        var self = this;
+        if( !self.dataStore ) {
+            return self;
+        }
+        var cSize = (new _dom(this.canvas)).getSize();
+        var s = sPos || [0, 0];
+
+        this.ctx.putImageData( self.dataStore, s[0], s[1] );
+
+        return this;
     };
 
     // 拼图基类
@@ -222,7 +282,7 @@
         this._ = {};
     };
 
-    // 行类构造方法功能
+    // 行 类构造方法功能
     _jigsaw.prototype.init = function () {
         var canvas = _tool.C('canvas');
         this._.$canvas = new _dom( canvas );
@@ -238,7 +298,7 @@
 
         this._.canvas.ctx.drawImage( this.img, 0, 0 );
 
-        // document.body.appendChild( canvas );
+        document.body.appendChild( canvas );
     };
 
     // rt，font类似css的font属性，这个pos是文字的左下顶点的位置
@@ -338,6 +398,29 @@
         canvas.arc( [orgPos.x, orgPos.y], R );
         canvas.ctx.save();
         canvas.ctx.translate( orgPos.x - R, orgPos.y - R );
+        canvas.ctx.fillStyle = pat;
+        canvas.ctx.fill();
+        canvas.ctx.restore();
+    };
+
+    // 添加图片到canvas方形区域，使用纹理实现
+    _jigsaw.prototype.addRecImg = function ( img, pos, w, h ){
+        var middleWare = function ( imgCtx ) {
+            imgCtx.drawImage( img, 0, 0, w, h );
+            imgCtx.rect( 0, 0, w, h );
+            imgCtx.clip();
+        };
+
+        // 自定义图片
+        var newImg = this.custImg( img, middleWare );
+
+        // 运用纹理进行填充
+
+        var canvas = this._.canvas;
+        var pat = canvas.ctx.createPattern( newImg, 'no-repeat' );
+        canvas.rect( [pos.x, pos.y], w, h );
+        canvas.ctx.save();
+        canvas.ctx.translate( pos.x, pos.y );
         canvas.ctx.fillStyle = pat;
         canvas.ctx.fill();
         canvas.ctx.restore();
